@@ -1,65 +1,174 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState } from "react";
+import type { EmotionAnalysis, FaceState, MuscleName } from "@/lib/fuzzy-core/types";
+import { FaceSvg } from "@/lib/render/FaceSvg";
+import { smoothFaceState } from "@/lib/fuzzy-core/faceMemory";
+
+type ApiResponse = {
+  message: string;
+  analysis: EmotionAnalysis;
+  face: FaceState;
+};
+
+const muscleLabels: Record<MuscleName, string> = {
+  browRaise: "Брови вверх",
+  browLower: "Брови вниз",
+  eyeOpen: "Глаза шире",
+  eyeSquint: "Прищур",
+  smile: "Улыбка",
+  mouthDown: "Рот вниз",
+  lipPress: "Сжатие губ",
+  jawDrop: "Рот открыт",
+  asymmetry: "Асимметрия",
+};
+
+export default function HomePage() {
+  const [message, setMessage] = useState("Какой ужас, моя собака опять съела полмешка корма");
+  const [analysis, setAnalysis] = useState<EmotionAnalysis | null>(null);
+  const [face, setFace] = useState<FaceState | null>(null);
+  const [rawFace, setRawFace] = useState<FaceState | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleAnalyze() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Ошибка анализа");
+      }
+
+      const result = data as ApiResponse;
+
+      setAnalysis(result.analysis);
+      setRawFace(result.face);
+
+      setFace((previous) => smoothFaceState(previous, result.face, 0.45));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Неизвестная ошибка");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="min-h-screen bg-zinc-950 px-6 py-10 text-zinc-100">
+      <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1fr_380px]">
+        <section className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
+          <h1 className="text-3xl font-bold">TvoiKent Face MVP</h1>
+          <p className="mt-2 text-zinc-400">
+            Текст → 5 оценок Mistral → нечёткая дефаззификация → мышцы → SVG-лицо.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+
+          <div className="mt-6">
+            <label className="text-sm font-medium text-zinc-300">
+              Сообщение
+            </label>
+
+            <textarea
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              className="mt-2 h-32 w-full resize-none rounded-2xl border border-zinc-700 bg-zinc-950 p-4 text-zinc-100 outline-none focus:border-zinc-400"
+              placeholder="Напиши фразу для анализа..."
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+
+            <button
+              onClick={handleAnalyze}
+              disabled={loading}
+              className="mt-4 rounded-2xl bg-zinc-100 px-5 py-3 font-semibold text-zinc-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? "Анализирую..." : "Сгенерировать мимику"}
+            </button>
+
+            {error && (
+              <p className="mt-4 rounded-2xl border border-red-900 bg-red-950 p-4 text-red-200">
+                {error}
+              </p>
+            )}
+          </div>
+
+          {analysis && (
+            <div className="mt-8 grid gap-5">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+                <h2 className="text-xl font-semibold">Оценки Mistral</h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Главная эмоция: <b>{analysis.dominant}</b>, уверенность:{" "}
+                  <b>{analysis.confidence.toFixed(2)}</b>
+                </p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  {analysis.explanation}
+                </p>
+
+                <div className="mt-4 grid gap-3">
+                  {Object.entries(analysis.scores).map(([key, value]) => (
+                    <div key={key}>
+                      <div className="mb-1 flex justify-between text-sm">
+                        <span>{key}</span>
+                        <span>{value.toFixed(2)}</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+                        <div
+                          className="h-full rounded-full bg-zinc-100"
+                          style={{ width: `${value * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {rawFace && (
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+                  <h2 className="text-xl font-semibold">Мышцы после дефаззификации</h2>
+
+                  <div className="mt-4 grid gap-3">
+                    {Object.entries(rawFace).map(([key, control]) => (
+                      <div key={key}>
+                        <div className="mb-1 flex justify-between text-sm">
+                          <span>{muscleLabels[key as MuscleName]}</span>
+                          <span>
+                            power {control.power.toFixed(2)} / lcr {control.lcr.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+                          <div
+                            className="h-full rounded-full bg-zinc-100"
+                            style={{ width: `${control.power * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        <aside className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
+          <h2 className="text-xl font-semibold">Лицо</h2>
+          <p className="mt-2 text-sm text-zinc-400">
+            Это не Live2D, не магия и не “ИИ рисует лицо”. Это обычные координаты SVG,
+            которые двигаются от чисел мышц.
+          </p>
+
+          <div className="mt-6 flex justify-center">
+            <FaceSvg face={face} />
+          </div>
+        </aside>
+      </div>
+    </main>
   );
 }
